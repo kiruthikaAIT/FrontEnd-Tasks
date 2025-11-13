@@ -41,7 +41,7 @@ const Products = () => {
   const [existingImages, setExistingImages] = useState([]);
   const [filters, setFilters] = useState({ name: "", InStock: "", startDate: "" });
   const [sort, setSort] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessage] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
