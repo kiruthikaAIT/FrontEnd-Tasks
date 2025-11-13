@@ -1,25 +1,29 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { TextField, Button, Box, Typography } from "@mui/material";
 import { useNavigate, Link } from "react-router-dom";
-import API from "../services/api";
+import { useDispatch, useSelector } from "react-redux";
+import { registerUser } from "../redux/slices/authSlice";
 
 const Register = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  
+  const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const handleRegister = async () => {
-    try {
-      const res = await API.post("/api/user/register", { name, email, password });
-      console.log(res);
-      
-      navigate("/login"); // Redirect after register
-    } catch (err) {
-      setError(err.response?.data?.message || "Registration failed");
-    }
+  const { user, loading, error } = useSelector((state) => state.auth);
+
+  const handleRegister = () => {
+    dispatch(registerUser({ name, email, password }));
   };
+
+  // Redirect if registration is successful
+  useEffect(() => {
+    if (user) {
+      navigate("/login");
+    }
+  }, [user, navigate]);
 
   return (
     <Box
@@ -64,8 +68,9 @@ const Register = () => {
         color="secondary"
         sx={{ mt: 2 }}
         onClick={handleRegister}
+        disabled={loading}
       >
-        Register
+        {loading ? "Registering..." : "Register"}
       </Button>
       <Typography sx={{ mt: 2 }}>
         Already have an account? <Link to="/login">Login</Link>

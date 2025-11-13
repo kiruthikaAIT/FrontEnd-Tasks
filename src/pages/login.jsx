@@ -1,25 +1,29 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { TextField, Button, Box, Typography } from "@mui/material";
 import { useNavigate, Link } from "react-router-dom";
-import API from "../services/api";
+import { useDispatch, useSelector } from "react-redux";
+import { loginUser } from "../redux/slices/authSlice";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+
+  const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
-    try {
-      const res = await API.post("/api/user/login", { email, password });
-      console.log(res);
-      
-      localStorage.setItem("token", res.data.token);
-      navigate("/"); 
-    } catch (err) {
-      setError(err.response?.data?.message || "Login failed");
-    }
+  const { user, token, loading, error } = useSelector((state) => state.auth);
+
+  const handleLogin = () => {
+    dispatch(loginUser({ email, password }));
   };
+
+  // Redirect if login is successful
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem("token", token);
+      navigate("/"); // redirect to home/dashboard
+    }
+  }, [token, navigate]);
 
   return (
     <Box
@@ -57,8 +61,9 @@ const Login = () => {
         color="secondary"
         sx={{ mt: 2 }}
         onClick={handleLogin}
+        disabled={loading}
       >
-        Login
+        {loading ? "Logging in..." : "Login"}
       </Button>
       <Typography sx={{ mt: 2 }}>
         Don't have an account? <Link to="/register">Register</Link>

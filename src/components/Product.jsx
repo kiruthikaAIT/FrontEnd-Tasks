@@ -20,10 +20,20 @@ import {
   Tooltip,
 } from "@mui/material";
 import { Delete as DeleteIcon, Edit as EditIcon, Close as CloseIcon } from "@mui/icons-material";
-import API from "../services/api";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  fetchProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from "../redux/slices/productSlice";
 
 const Products = () => {
-  const [products, setProducts] = useState([]);
+  const dispatch = useDispatch();
+  const { items: products, totalPages, loading, error } = useSelector(
+    (state) => state.products
+  );
+
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", price: "", description: "", InStock: true });
   const [editingProduct, setEditingProduct] = useState(null);
@@ -33,45 +43,16 @@ const Products = () => {
   const [sort, setSort] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const savedFilters = sessionStorage.getItem("productFilters");
     const savedSort = sessionStorage.getItem("productSort");
     if (savedFilters) setFilters(JSON.parse(savedFilters));
     if (savedSort) setSort(savedSort);
-    fetchProducts(JSON.parse(savedFilters || "{}"), 1);
-  }, []);
 
-  // Fetch products with filters and pagination
-  const fetchProducts = async (appliedFilters = filters, pageNumber = page) => {
-    try {
-      setErrorMessage("");
-      const res = await API.get("/api/product/filter", {
-        params: { ...appliedFilters, page: pageNumber, limit: 3 },
-      });
-      console.log(res.data);
-      
-      const { data: fetchedProducts, meta: { totalPages }  } = res.data;
-      console.log(fetchedProducts);
-      console.log(totalPages);
-      
-      if (!fetchedProducts || fetchedProducts.length === 0) {
-        setProducts([]);
-        setErrorMessage("No products found for the selected filter.");
-      } else {
-        let sortedProducts = applySort(fetchedProducts, sort);
-        setProducts(sortedProducts);
-        setTotalPages(totalPages);
-      }
-    } catch (err) {
-      console.error(err);
-      setProducts([]);
-      setErrorMessage("Something went wrong while fetching products.");
-    }
-  };
+    dispatch(fetchProducts({ filters: JSON.parse(savedFilters || "{}"), page: 1 }));
+  }, [dispatch]);
 
-  // Sort products
   const applySort = (productsArray, sortValue) => {
     const arr = [...productsArray];
     switch (sortValue) {
@@ -89,10 +70,23 @@ const Products = () => {
   const handleSortChange = (value) => {
     setSort(value);
     sessionStorage.setItem("productSort", value);
-    setProducts((prev) => applySort(prev, value));
   };
 
-  // Create / Update Product
+  const handleFilter = () => {
+    setPage(1);
+    sessionStorage.setItem("productFilters", JSON.stringify(filters));
+    dispatch(fetchProducts({ filters, page: 1 }));
+  };
+
+  const handleReset = () => {
+    setFilters({ name: "", InStock: "", startDate: "" });
+    setSort("");
+    setPage(1);
+    sessionStorage.removeItem("productFilters");
+    sessionStorage.removeItem("productSort");
+    dispatch(fetchProducts({ filters: {}, page: 1 }));
+  };
+
   const handleSubmit = async () => {
     try {
       const payload = new FormData();
@@ -108,33 +102,23 @@ const Products = () => {
       images.forEach((file) => payload.append("images", file));
 
       if (editingProduct) {
-        await API.put(`/api/product/${editingProduct._id}`, payload, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await dispatch(updateProduct({ id: editingProduct._id, formData: payload }));
       } else {
-        await API.post("/api/product/create", payload, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await dispatch(createProduct(payload));
       }
 
-      fetchProducts(filters, page);
+      dispatch(fetchProducts({ filters, page }));
       handleClose();
     } catch (err) {
       console.error("Error submitting product:", err);
     }
   };
 
-  // Delete product
   const handleDelete = async (id) => {
-    try {
-      await API.delete(`/api/product/${id}`);
-      fetchProducts(filters, page);
-    } catch (err) {
-      console.error(err);
-    }
+    await dispatch(deleteProduct(id));
+    dispatch(fetchProducts({ filters, page }));
   };
 
-  // Open dialog
   const handleOpen = (product = null) => {
     setEditingProduct(product);
     if (product) {
@@ -161,13 +145,14 @@ const Products = () => {
     setExistingImages([]);
   };
 
-  // Remove images
   const handleRemoveExistingImage = (imgPath) => {
     setExistingImages((prev) => prev.filter((img) => img !== imgPath));
   };
   const handleRemoveNewImage = (index) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
+
+  const displayedProducts = applySort(products, sort);
 
   return (
     <Container>
@@ -201,29 +186,10 @@ const Products = () => {
           }
           label="In Stock"
         />
-        <Button
-          variant="contained"
-          color="secondary"
-          onClick={() => {
-            setPage(1);
-            sessionStorage.setItem("productFilters", JSON.stringify(filters));
-            fetchProducts(filters, 1);
-          }}
-        >
+        <Button variant="contained" color="secondary" onClick={handleFilter}>
           Apply Filters
         </Button>
-        <Button
-          variant="outlined"
-          color="secondary"
-          onClick={() => {
-            setFilters({ name: "", InStock: "", startDate: "" });
-            setSort("");
-            setPage(1);
-            sessionStorage.removeItem("productFilters");
-            sessionStorage.removeItem("productSort");
-            fetchProducts({ name: "", InStock: "", startDate: "" }, 1);
-          }}
-        >
+        <Button variant="outlined" color="secondary" onClick={handleReset}>
           Reset
         </Button>
 
@@ -242,49 +208,67 @@ const Products = () => {
         </TextField>
       </Box>
 
-      {errorMessage && <Box mt={2} mb={2} color="red">{errorMessage}</Box>}
+      {/* Error */}
+      {(error || errorMessage) && (
+        <Box mt={2} mb={2} color="red">
+          {error || errorMessage}
+        </Box>
+      )}
+
+      {/* Loading */}
+      {loading && <Box mt={2}>Loading products...</Box>}
 
       {/* Product Table */}
-      <Table sx={{ mt: 2 }}>
-        <TableHead>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Price</TableCell>
-            <TableCell>Images</TableCell>
-            <TableCell>In Stock</TableCell>
-            <TableCell>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {products.map((product) => (
-            <TableRow key={product._id}>
-              <TableCell>{product.name}</TableCell>
-              <TableCell>{product.price}</TableCell>
-              <TableCell>
-                <Box display="flex" gap={1}>
-                  {product.images?.map((img, idx) => (
-                    <Avatar
-                      key={idx}
-                      src={`${import.meta.env.VITE_BACKEND_URL}${img}`}
-                      variant="square"
-                      sx={{ width: 48, height: 48 }}
-                    />
-                  ))}
-                </Box>
-              </TableCell>
-              <TableCell>{product.InStock ? "Yes" : "No"}</TableCell>
-              <TableCell>
-                <Button color="primary" onClick={() => handleOpen(product)}>
-                  <EditIcon />
-                </Button>
-                <IconButton color="error" onClick={() => handleDelete(product._id)}>
-                  <DeleteIcon />
-                </IconButton>
-              </TableCell>
+      {!loading && (
+        <Table sx={{ mt: 2 }}>
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Price</TableCell>
+              <TableCell>Images</TableCell>
+              <TableCell>In Stock</TableCell>
+              <TableCell>Actions</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {displayedProducts.length > 0 ? (
+              displayedProducts.map((product) => (
+                <TableRow key={product._id}>
+                  <TableCell>{product.name}</TableCell>
+                  <TableCell>{product.price}</TableCell>
+                  <TableCell>
+                    <Box display="flex" gap={1}>
+                      {product.images?.map((img, idx) => (
+                        <Avatar
+                          key={idx}
+                          src={`${import.meta.env.VITE_BACKEND_URL}${img}`}
+                          variant="square"
+                          sx={{ width: 48, height: 48 }}
+                        />
+                      ))}
+                    </Box>
+                  </TableCell>
+                  <TableCell>{product.InStock ? "Yes" : "No"}</TableCell>
+                  <TableCell>
+                    <Button color="primary" onClick={() => handleOpen(product)}>
+                      <EditIcon />
+                    </Button>
+                    <IconButton color="error" onClick={() => handleDelete(product._id)}>
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} align="center">
+                  No products found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      )}
 
       {/* Pagination */}
       <Box mt={2} display="flex" justifyContent="center" gap={2}>
@@ -294,7 +278,7 @@ const Products = () => {
           onClick={() => {
             const newPage = page - 1;
             setPage(newPage);
-            fetchProducts(filters, newPage);
+            dispatch(fetchProducts({ filters, page: newPage }));
           }}
         >
           Previous
@@ -308,14 +292,14 @@ const Products = () => {
           onClick={() => {
             const newPage = page + 1;
             setPage(newPage);
-            fetchProducts(filters, newPage);
+            dispatch(fetchProducts({ filters, page: newPage }));
           }}
         >
           Next
         </Button>
       </Box>
 
-      {/* Add/Edit Dialog */}
+      {/* Dialog */}
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
         <DialogContent>
@@ -352,8 +336,6 @@ const Products = () => {
             }
             label="In Stock"
           />
-
-          {/* File Input */}
           <Box mt={2}>
             <input type="file" multiple onChange={(e) => setImages([...e.target.files])} />
           </Box>
@@ -409,7 +391,9 @@ const Products = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose} color="secondary">Cancel</Button>
+          <Button onClick={handleClose} color="secondary">
+            Cancel
+          </Button>
           <Button onClick={handleSubmit} variant="contained" color="secondary">
             {editingProduct ? "Update" : "Create"}
           </Button>
